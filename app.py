@@ -12,6 +12,7 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
+socketio = SocketIO(app, async_mode='gevent')
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 socketio = SocketIO(app, cors_allowed_origins="*")
