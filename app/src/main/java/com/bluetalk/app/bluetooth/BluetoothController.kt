@@ -19,6 +19,6 @@ fun bluetoothRuntimePermissions(): List<String> {
             Manifest.permission.BLUETOOTH_ADVERTISE,
         )
     } else {
-        listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        emptyList()
     }
 }
