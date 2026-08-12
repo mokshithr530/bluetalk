@@ -1,0 +1,24 @@
+.gradle/
+.idea/
+.kotlin/
+build/
+**/build/
+local.properties
+*.iml
+
+# Android build outputs
+captures/
+externalNativeBuild/
+
+# Local/user files
+*.keystore
+*.jks
+*.log
+.DS_Store
+
+# Python leftovers from the previous web application
+venv/
+.venv/
+ven/
+__pycache__/
+*.pyc
