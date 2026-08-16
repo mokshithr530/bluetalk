@@ -9,7 +9,10 @@ import com.bluetalk.app.ui.home.HomeViewModel
 import com.bluetalk.app.ui.navigation.BluetalkDestination
 
 @Composable
-fun BluetalkApp(homeViewModel: HomeViewModel) {
+fun BluetalkApp(
+    homeViewModel: HomeViewModel,
+    onRequestBluetoothPermissions: () -> Unit,
+) {
     val navController = rememberNavController()
 
     NavHost(
@@ -17,7 +20,10 @@ fun BluetalkApp(homeViewModel: HomeViewModel) {
         startDestination = BluetalkDestination.Home.route,
     ) {
         composable(BluetalkDestination.Home.route) {
-            HomeRoute(viewModel = homeViewModel)
+            HomeRoute(
+                viewModel = homeViewModel,
+                onRequestBluetoothPermissions = onRequestBluetoothPermissions,
+            )
         }
     }
 }

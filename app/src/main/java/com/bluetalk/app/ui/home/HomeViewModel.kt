@@ -38,11 +38,19 @@ class HomeViewModel(
         )
     }
 
+    fun requiredBluetoothPermissions(): List<String> {
+        return bluetoothController.requiredPermissions()
+    }
+
+    fun refreshBluetoothAvailability() {
+        bluetoothController.refreshAvailability()
+    }
+
     fun endSession() {
         sessionManager.endSession()
     }
 
     fun findNearbyUsers() {
-        bluetoothController.refreshAvailability()
+        refreshBluetoothAvailability()
     }
 }

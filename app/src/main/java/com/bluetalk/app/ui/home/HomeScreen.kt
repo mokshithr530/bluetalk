@@ -27,7 +27,10 @@ import com.bluetalk.app.ui.components.StatusLine
 import com.bluetalk.app.ui.theme.BluetalkTheme
 
 @Composable
-fun HomeRoute(viewModel: HomeViewModel) {
+fun HomeRoute(
+    viewModel: HomeViewModel,
+    onRequestBluetoothPermissions: () -> Unit,
+) {
     val uiState by viewModel.uiState.collectAsState()
 
     HomeScreen(
@@ -35,6 +38,7 @@ fun HomeRoute(viewModel: HomeViewModel) {
         onCreatePrivateSession = viewModel::createPrivateSession,
         onFindNearbyUsers = viewModel::findNearbyUsers,
         onEndSession = viewModel::endSession,
+        onRequestBluetoothPermissions = onRequestBluetoothPermissions,
     )
 }
 
@@ -44,6 +48,7 @@ fun HomeScreen(
     onCreatePrivateSession: () -> Unit,
     onFindNearbyUsers: () -> Unit,
     onEndSession: () -> Unit,
+    onRequestBluetoothPermissions: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -74,6 +79,19 @@ fun HomeScreen(
                 value = uiState.bluetoothState.asDisplayText(),
             )
 
+            if (uiState.bluetoothState == BluetoothConnectionState.PermissionRequired) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Bluetalk needs Bluetooth permission before it can find or connect nearby devices.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(onClick = onRequestBluetoothPermissions) {
+                    Text("Grant Bluetooth Permission")
+                }
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
 
             StatusLine(
@@ -97,6 +115,7 @@ fun HomeScreen(
                 OutlinedButton(
                     onClick = onFindNearbyUsers,
                     modifier = Modifier.weight(1f),
+                    enabled = uiState.bluetoothState == BluetoothConnectionState.Ready,
                 ) {
                     Text("Find Nearby Users")
                 }
@@ -142,6 +161,7 @@ private fun HomeScreenPreview() {
             onCreatePrivateSession = {},
             onFindNearbyUsers = {},
             onEndSession = {},
+            onRequestBluetoothPermissions = {},
         )
     }
 }
