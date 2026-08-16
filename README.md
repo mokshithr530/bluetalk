@@ -14,6 +14,7 @@ Bluetalk is being developed incrementally. The previous web chat architecture ha
 - Bluetooth transport interfaces prepared for future Bluetooth Classic/RFCOMM work.
 - In-memory session, message, transfer, protocol, and security boundaries.
 - Android manifest permission declarations for future Bluetooth scanning, connection, and advertising.
+- Bluetooth runtime permission request flow on the home screen.
 - Backup/data extraction rules that avoid backing up app file data.
 
 ## Planned Functionality
@@ -21,6 +22,27 @@ Bluetalk is being developed incrementally. The previous web chat architecture ha
 Bluetalk does not yet perform Bluetooth discovery, Bluetooth connections, message transmission, file transfer, or encryption. Those features are planned for later phases.
 
 Conversation data is intended to exist only during an active session. Bluetalk will not persist chat history to a local database, cloud backend, or server.
+
+## Current Phase Plan
+
+Bluetalk is currently moving from Phase 0 into Phase 1.
+
+Phase 1 will be implemented in small checkpoints:
+
+1. Bluetooth runtime permissions.
+2. Nearby Bluetooth device discovery.
+3. Real-device discovery testing.
+4. Host/join connection roles.
+5. Bluetooth Classic/RFCOMM socket connection.
+6. Basic text message exchange between two Android devices.
+
+The first checkpoint has been implemented in code: the app can show a missing-permission state, request Bluetooth permissions, refresh Bluetooth availability after the permission result, and keep nearby discovery disabled until Bluetooth is ready.
+
+Current testing status:
+
+- `.\gradlew.bat :app:assembleDebug` has passed.
+- Real phone/emulator UI testing is not yet done.
+- Bluetooth discovery, connection, and message exchange are not implemented yet.
 
 ## Architecture
 
