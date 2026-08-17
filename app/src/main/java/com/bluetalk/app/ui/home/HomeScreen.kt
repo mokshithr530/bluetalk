@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -57,6 +59,7 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.Start,
@@ -117,7 +120,45 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     enabled = uiState.bluetoothState == BluetoothConnectionState.Ready,
                 ) {
-                    Text("Find Nearby Users")
+                    Text(
+                        text = if (uiState.bluetoothState == BluetoothConnectionState.Scanning) {
+                            "Scanning..."
+                        } else {
+                            "Find Nearby Users"
+                        },
+                    )
+                }
+            }
+
+            if (
+                uiState.bluetoothState == BluetoothConnectionState.Scanning ||
+                uiState.nearbyDevices.isNotEmpty()
+            ) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "Nearby devices",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (uiState.nearbyDevices.isEmpty()) {
+                    Text(
+                        text = "Scanning for nearby Bluetooth devices...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        uiState.nearbyDevices.forEach { device ->
+                            NearbyDeviceRow(
+                                name = device.displayName,
+                                address = device.id,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -127,6 +168,31 @@ fun HomeScreen(
                     Text("End Session")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NearbyDeviceRow(
+    name: String,
+    address: String,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        tonalElevation = 1.dp,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = address,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -17,10 +17,12 @@ class HomeViewModel(
     val uiState: StateFlow<HomeUiState> = combine(
         bluetoothController.connectionState,
         sessionManager.sessionState,
-    ) { bluetoothState, sessionState ->
+        bluetoothController.nearbyDevices,
+    ) { bluetoothState, sessionState, nearbyDevices ->
         HomeUiState(
             bluetoothState = bluetoothState,
             sessionState = sessionState,
+            nearbyDevices = nearbyDevices,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -51,6 +53,11 @@ class HomeViewModel(
     }
 
     fun findNearbyUsers() {
-        refreshBluetoothAvailability()
+        bluetoothController.startDiscovery()
+    }
+
+    override fun onCleared() {
+        bluetoothController.stopDiscovery()
+        super.onCleared()
     }
 }
