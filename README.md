@@ -15,11 +15,12 @@ Bluetalk is being developed incrementally. The previous web chat architecture ha
 - In-memory session, message, transfer, protocol, and security boundaries.
 - Android manifest permission declarations for future Bluetooth scanning, connection, and advertising.
 - Bluetooth runtime permission request flow on the home screen.
+- Nearby Bluetooth Classic device discovery with discovered devices shown on the home screen.
 - Backup/data extraction rules that avoid backing up app file data.
 
 ## Planned Functionality
 
-Bluetalk does not yet perform Bluetooth discovery, Bluetooth connections, message transmission, file transfer, or encryption. Those features are planned for later phases.
+Bluetalk does not yet perform Bluetooth connections, message transmission, file transfer, or encryption. Those features are planned for later phases.
 
 Conversation data is intended to exist only during an active session. Bluetalk will not persist chat history to a local database, cloud backend, or server.
 
@@ -36,13 +37,14 @@ Phase 1 will be implemented in small checkpoints:
 5. Bluetooth Classic/RFCOMM socket connection.
 6. Basic text message exchange between two Android devices.
 
-The first checkpoint has been implemented in code: the app can show a missing-permission state, request Bluetooth permissions, refresh Bluetooth availability after the permission result, and keep nearby discovery disabled until Bluetooth is ready.
+The first three checkpoints are complete: the app requests Bluetooth permissions, scans for nearby Bluetooth Classic devices, and displays discovered devices on the home screen. The discovery flow has been verified on a physical Samsung SM-A245F, which found a nearby REDMI Note 15 5G and retained it in the device list after scanning completed.
 
 Current testing status:
 
 - `.\gradlew.bat :app:assembleDebug` has passed.
-- Real phone/emulator UI testing is not yet done.
-- Bluetooth discovery, connection, and message exchange are not implemented yet.
+- Real-phone permission and Bluetooth discovery testing has passed on a Samsung SM-A245F.
+- The scan transitioned from `Ready` to `Scanning`, discovered a nearby REDMI Note 15 5G, returned to `Ready`, and retained the result without an app crash.
+- Bluetooth connection and message exchange are not implemented yet.
 
 ## Architecture
 
