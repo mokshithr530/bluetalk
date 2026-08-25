@@ -1,5 +1,6 @@
 package com.bluetalk.app.ui.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,8 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +30,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.bluetalk.app.bluetooth.BluetoothConnectionState
+import com.bluetalk.app.model.DeviceIdentity
+import com.bluetalk.app.session.ConnectionRole
 import com.bluetalk.app.session.SessionState
 import com.bluetalk.app.ui.components.StatusLine
 import com.bluetalk.app.ui.theme.BluetalkTheme
@@ -39,16 +47,21 @@ fun HomeRoute(
         uiState = uiState,
         onCreatePrivateSession = viewModel::createPrivateSession,
         onFindNearbyUsers = viewModel::findNearbyUsers,
+        onSelectConnectionRole = viewModel::selectConnectionRole,
+        onSelectNearbyDevice = viewModel::selectNearbyDevice,
         onEndSession = viewModel::endSession,
         onRequestBluetoothPermissions = onRequestBluetoothPermissions,
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
     onCreatePrivateSession: () -> Unit,
     onFindNearbyUsers: () -> Unit,
+    onSelectConnectionRole: (ConnectionRole) -> Unit,
+    onSelectNearbyDevice: (DeviceIdentity) -> Unit,
     onEndSession: () -> Unit,
     onRequestBluetoothPermissions: () -> Unit,
 ) {
@@ -97,6 +110,30 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            Text(
+                text = "Connection role",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                ConnectionRole.entries.forEachIndexed { index, role ->
+                    SegmentedButton(
+                        selected = uiState.connectionRole == role,
+                        onClick = { onSelectConnectionRole(role) },
+                        shape = SegmentedButtonDefaults.itemShape(
+                            index = index,
+                            count = ConnectionRole.entries.size,
+                        ),
+                        enabled = uiState.sessionState is SessionState.NoSession,
+                    ) {
+                        Text(role.asDisplayText())
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             StatusLine(
                 label = "Session",
                 value = uiState.sessionState.asDisplayText(),
@@ -104,35 +141,36 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
+            if (uiState.connectionRole == ConnectionRole.Host) {
                 Button(
                     onClick = onCreatePrivateSession,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = uiState.sessionState is SessionState.NoSession,
                 ) {
-                    Text("Create Private Session")
+                    Text("Create Host Session")
                 }
-
+            } else {
                 OutlinedButton(
                     onClick = onFindNearbyUsers,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     enabled = uiState.bluetoothState == BluetoothConnectionState.Ready,
                 ) {
                     Text(
                         text = if (uiState.bluetoothState == BluetoothConnectionState.Scanning) {
                             "Scanning..."
                         } else {
-                            "Find Nearby Users"
+                            "Scan for Host"
                         },
                     )
                 }
             }
 
             if (
-                uiState.bluetoothState == BluetoothConnectionState.Scanning ||
-                uiState.nearbyDevices.isNotEmpty()
+                uiState.connectionRole == ConnectionRole.Join &&
+                (
+                    uiState.bluetoothState == BluetoothConnectionState.Scanning ||
+                        uiState.nearbyDevices.isNotEmpty()
+                    )
             ) {
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(
@@ -154,8 +192,9 @@ fun HomeScreen(
                     ) {
                         uiState.nearbyDevices.forEach { device ->
                             NearbyDeviceRow(
-                                name = device.displayName,
-                                address = device.id,
+                                device = device,
+                                selected = uiState.selectedDevice?.id == device.id,
+                                onClick = { onSelectNearbyDevice(device) },
                             )
                         }
                     }
@@ -174,26 +213,53 @@ fun HomeScreen(
 
 @Composable
 private fun NearbyDeviceRow(
-    name: String,
-    address: String,
+    device: DeviceIdentity,
+    selected: Boolean,
+    onClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
         tonalElevation = 1.dp,
         shape = MaterialTheme.shapes.small,
+        border = if (selected) {
+            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            null
+        },
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = selected,
+                onClick = null,
             )
-            Text(
-                text = address,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp),
+            ) {
+                Text(
+                    text = device.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = device.id,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
+    }
+}
+
+private fun ConnectionRole.asDisplayText(): String {
+    return when (this) {
+        ConnectionRole.Host -> "Host"
+        ConnectionRole.Join -> "Join"
     }
 }
 
@@ -226,6 +292,8 @@ private fun HomeScreenPreview() {
             uiState = HomeUiState(),
             onCreatePrivateSession = {},
             onFindNearbyUsers = {},
+            onSelectConnectionRole = {},
+            onSelectNearbyDevice = {},
             onEndSession = {},
             onRequestBluetoothPermissions = {},
         )

@@ -16,6 +16,7 @@ Bluetalk is being developed incrementally. The previous web chat architecture ha
 - Android manifest permission declarations for future Bluetooth scanning, connection, and advertising.
 - Bluetooth runtime permission request flow on the home screen.
 - Nearby Bluetooth Classic device discovery with discovered devices shown on the home screen.
+- Host/join role selection with a selectable target device for the join flow.
 - Backup/data extraction rules that avoid backing up app file data.
 
 ## Planned Functionality
@@ -37,14 +38,15 @@ Phase 1 will be implemented in small checkpoints:
 5. Bluetooth Classic/RFCOMM socket connection.
 6. Basic text message exchange between two Android devices.
 
-The first three checkpoints are complete: the app requests Bluetooth permissions, scans for nearby Bluetooth Classic devices, and displays discovered devices on the home screen. The discovery flow has been verified on a physical Samsung SM-A245F, which found a nearby REDMI Note 15 5G and retained it in the device list after scanning completed.
+The first four checkpoints are complete: the app requests Bluetooth permissions, scans for nearby Bluetooth Classic devices, displays discovered devices, and lets the user choose a host or join role. In join mode, one discovered device can be selected as the target for the upcoming socket connection.
 
 Current testing status:
 
 - `.\gradlew.bat :app:assembleDebug` has passed.
 - Real-phone permission and Bluetooth discovery testing has passed on a Samsung SM-A245F.
 - The scan transitioned from `Ready` to `Scanning`, discovered a nearby REDMI Note 15 5G, returned to `Ready`, and retained the result without an app crash.
-- Bluetooth connection and message exchange are not implemented yet.
+- Physical UI testing passed for host session setup, join-mode discovery, and single-device selection on a Samsung SM-A245F.
+- Bluetooth socket connection and message exchange are not implemented yet.
 
 ## Architecture
 
