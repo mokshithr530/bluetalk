@@ -151,3 +151,14 @@ Open the project in Android Studio and let Gradle sync, or build from the reposi
 ```
 
 This project requires a modern Android build environment with JDK 17 and an installed Android SDK.
+
+## Debugging Lessons Learned (Phases 1-3)
+During the implementation of Phases 1-3, two critical bugs were encountered and resolved:
+
+1. **Bluetooth Connection Failures (IOException):**
+   When attempting to connect a `BluetoothSocket`, the connection would consistently fail with a `read failed, socket might closed or timeout` IOException. This occurs because actively scanning for nearby devices consumes the Bluetooth radio's bandwidth. 
+   **Fix:** We must always call `adapter.cancelDiscovery()` immediately before calling `socket.connect()` to free up the radio.
+
+2. **Compose State-Hoisting Disconnect:**
+   The UI failed to display incoming messages despite the socket successfully receiving the byte arrays under the hood. This was due to a state-hoisting bug in `HomeRoute` where the `messages` Flow from `HomeViewModel` was not being collected and passed down to the `HomeScreen` composable, leaving the UI permanently rendering an empty list default parameter.
+   **Fix:** Collected the state using `val messages by viewModel.messages.collectAsState()` and explicitly passed it (along with `viewModel::sendMessage`) down to the stateless composable.
