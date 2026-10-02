@@ -4,6 +4,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,6 +48,8 @@ import com.bluetalk.app.ui.theme.BluetalkTheme
 fun HomeRoute(
     viewModel: HomeViewModel,
     onRequestBluetoothPermissions: () -> Unit,
+    messages: List<String> = emptyList(),
+    onSendMessage: (String) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -64,6 +74,8 @@ fun HomeScreen(
     onSelectNearbyDevice: (DeviceIdentity) -> Unit,
     onEndSession: () -> Unit,
     onRequestBluetoothPermissions: () -> Unit,
+    messages: List<String> = emptyList(),
+    onSendMessage: (String) -> Unit = {},
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -201,12 +213,47 @@ fun HomeScreen(
                 }
             }
 
+
             if (uiState.sessionState is SessionState.Active) {
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Text("Messages", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().height(200.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(messages) { msg ->
+                        Text(msg)
+                    }
+                }
+                
+                var textState by remember { mutableStateOf("") }
+                
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = textState,
+                        onValueChange = { textState = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Type a message...") }
+                    )
+                    Button(
+                        onClick = {
+                            onSendMessage(textState)
+                            textState = ""
+                        },
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Text("Send")
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedButton(onClick = onEndSession) {
                     Text("End Session")
                 }
             }
+
         }
     }
 }
