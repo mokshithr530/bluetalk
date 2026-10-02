@@ -48,19 +48,23 @@ import com.bluetalk.app.ui.theme.BluetalkTheme
 fun HomeRoute(
     viewModel: HomeViewModel,
     onRequestBluetoothPermissions: () -> Unit,
-    messages: List<String> = emptyList(),
-    onSendMessage: (String) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val messages by viewModel.messages.collectAsState()
 
     HomeScreen(
         uiState = uiState,
         onCreatePrivateSession = viewModel::createPrivateSession,
         onFindNearbyUsers = viewModel::findNearbyUsers,
         onSelectConnectionRole = viewModel::selectConnectionRole,
-        onSelectNearbyDevice = viewModel::selectNearbyDevice,
+        onSelectNearbyDevice = { device ->
+            viewModel.selectNearbyDevice(device)
+            viewModel.joinSession(device)
+        },
         onEndSession = viewModel::endSession,
         onRequestBluetoothPermissions = onRequestBluetoothPermissions,
+        messages = messages,
+        onSendMessage = viewModel::sendMessage,
     )
 }
 
