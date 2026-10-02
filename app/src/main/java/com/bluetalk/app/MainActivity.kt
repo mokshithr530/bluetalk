@@ -8,7 +8,9 @@ import androidx.activity.viewModels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.bluetalk.app.bluetooth.AndroidBluetoothController
-import com.bluetalk.app.session.SessionManager
+import com.bluetalk.app.bluetooth.AndroidBluetoothServer
+import com.bluetalk.app.bluetooth.AndroidBluetoothClient
+import com.bluetalk.app.session.SessionManagerImpl
 import com.bluetalk.app.ui.BluetalkApp
 import com.bluetalk.app.ui.home.HomeViewModel
 import com.bluetalk.app.ui.theme.BluetalkTheme
@@ -26,7 +28,9 @@ class MainActivity : ComponentActivity() {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 return HomeViewModel(
                     bluetoothController = AndroidBluetoothController(applicationContext),
-                    sessionManager = SessionManager(),
+                    sessionManager = SessionManagerImpl(),
+                    bluetoothServer = AndroidBluetoothServer(applicationContext),
+                    bluetoothClient = AndroidBluetoothClient(applicationContext)
                 ) as T
             }
         }

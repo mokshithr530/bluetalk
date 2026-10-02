@@ -3,22 +3,32 @@ package com.bluetalk.app.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bluetalk.app.bluetooth.BluetoothController
+import com.bluetalk.app.bluetooth.BluetoothServer
+import com.bluetalk.app.bluetooth.BluetoothClient
+import com.bluetalk.app.bluetooth.BluetoothConnection
 import com.bluetalk.app.model.DeviceIdentity
 import com.bluetalk.app.session.ConnectionRole
-import com.bluetalk.app.session.SessionManager
+import com.bluetalk.app.session.ISessionManager
 import com.bluetalk.app.session.SessionState
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import java.nio.charset.StandardCharsets
 
 class HomeViewModel(
     private val bluetoothController: BluetoothController,
-    private val sessionManager: SessionManager,
+    private val sessionManager: ISessionManager,
+    private val bluetoothServer: BluetoothServer,
+    private val bluetoothClient: BluetoothClient,
 ) : ViewModel() {
     private val connectionRole = MutableStateFlow(ConnectionRole.Host)
     private val selectedDevice = MutableStateFlow<DeviceIdentity?>(null)
+
+    val messages = MutableStateFlow<List<String>>(emptyList())
+    private var activeConnection: BluetoothConnection? = null
 
     val uiState: StateFlow<HomeUiState> = combine(
         bluetoothController.connectionState,
@@ -47,9 +57,45 @@ class HomeViewModel(
     fun createPrivateSession() {
         connectionRole.value = ConnectionRole.Host
         selectedDevice.value = null
-        sessionManager.createLocalSession(
-            localDevice = DeviceIdentity(id = "local", displayName = "This device"),
-        )
+        sessionManager.createSession("local")
+        viewModelScope.launch {
+            bluetoothServer.listen()
+        }
+        viewModelScope.launch {
+            bluetoothServer.incomingConnections.collect { connection ->
+                activeConnection = connection
+                listenToConnection(connection)
+            }
+        }
+    }
+
+    fun joinSession(device: DeviceIdentity) {
+        viewModelScope.launch {
+            val result = bluetoothClient.connect(device)
+            result.onSuccess { connection ->
+                activeConnection = connection
+                sessionManager.joinSession(device.id, "local")
+                listenToConnection(connection)
+            }
+        }
+    }
+    
+    private fun listenToConnection(connection: BluetoothConnection) {
+        viewModelScope.launch {
+            connection.incomingBytes.collect { bytes ->
+                val text = String(bytes, StandardCharsets.UTF_8).trimEnd(0.toChar())
+                messages.value = messages.value + ("Peer: $text")
+            }
+        }
+    }
+
+    fun sendMessage(text: String) {
+        if (text.isNotBlank()) {
+            messages.value = messages.value + ("Me: $text")
+            viewModelScope.launch {
+                activeConnection?.write(text.toByteArray(StandardCharsets.UTF_8))
+            }
+        }
     }
 
     fun selectConnectionRole(role: ConnectionRole) {
@@ -84,6 +130,12 @@ class HomeViewModel(
 
     fun endSession() {
         sessionManager.endSession()
+        viewModelScope.launch {
+            activeConnection?.close()
+            activeConnection = null
+            bluetoothServer.stop()
+        }
+        messages.value = emptyList()
     }
 
     fun findNearbyUsers() {
@@ -97,6 +149,10 @@ class HomeViewModel(
 
     override fun onCleared() {
         bluetoothController.stopDiscovery()
+        viewModelScope.launch {
+            activeConnection?.close()
+            bluetoothServer.stop()
+        }
         super.onCleared()
     }
 }
