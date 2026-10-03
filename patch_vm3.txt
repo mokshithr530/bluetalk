@@ -1,0 +1,22 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
+@@ -105,7 +105,7 @@
+                             incomingFileBytes += packet.payload
+                             android.util.Log.e("BluetalkFile", "Received chunk, total bytes now: ${incomingFileBytes.size} / $expectedFileSize")
+                             if (incomingFileBytes.size >= expectedFileSize) {
+-                                messages.value = messages.value + ("Peer sent a file: $expectedFileName")
++                                messages.value = messages.value + ("System: Received file $expectedFileName (Saved to Downloads)")
+                                 android.util.Log.e("BluetalkFile", "File completely received!")
+                                 fileTransferManager.saveReceivedFile(expectedFileName, incomingFileBytes)
+                             }
+@@ -134,6 +134,7 @@
+     fun sendFile(uri: android.net.Uri) {
+         messages.value = messages.value + ("Me: Sending file ${uri.lastPathSegment ?: "unknown"}...")
+         viewModelScope.launch {
+-            activeConnection?.let { fileTransferManager.sendFile(uri, it) }
++            activeConnection?.let { 
++                fileTransferManager.sendFile(uri, it) 
++                messages.value = messages.value + ("System: File successfully sent!")
++            }
+         }
+     }

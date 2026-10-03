@@ -136,7 +136,10 @@ class HomeViewModel(
     fun sendFile(uri: android.net.Uri) {
         messages.value = messages.value + ("Me: Sending file ${uri.lastPathSegment ?: "unknown"}...")
         viewModelScope.launch {
-            activeConnection?.let { fileTransferManager.sendFile(uri, it) }
+            activeConnection?.let { 
+                fileTransferManager.sendFile(uri, it) 
+                messages.value = messages.value + ("System: File successfully sent!")
+            }
         }
     }
 
