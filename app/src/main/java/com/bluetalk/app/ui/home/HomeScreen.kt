@@ -196,6 +196,7 @@ fun HomeScreen(
 
             if (
                 uiState.connectionRole == ConnectionRole.Join &&
+                uiState.sessionState !is SessionState.Active &&
                 (
                     uiState.bluetoothState == BluetoothConnectionState.Scanning ||
                         uiState.nearbyDevices.isNotEmpty()
