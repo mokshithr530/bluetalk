@@ -1,0 +1,29 @@
+--- app/src/main/java/com/bluetalk/app/transfer/FileTransferManager.kt
++++ app/src/main/java/com/bluetalk/app/transfer/FileTransferManager.kt
+@@ -10,6 +10,8 @@
+ import org.json.JSONObject
+ import java.io.File
+ import java.io.FileOutputStream
++import android.os.Environment
++import android.util.Log
+ 
+ class FileTransferManager(private val context: Context) {
+     suspend fun sendFile(uri: Uri, connection: BluetoothConnection) = withContext(Dispatchers.IO) {
+@@ -43,4 +45,17 @@
+             connection.write(PacketEncoder.encode(chunkPacket))
+         }
+     }
++
++    fun saveReceivedFile(fileName: String, bytes: ByteArray) {
++        try {
++            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
++            if (!downloadsDir.exists()) downloadsDir.mkdirs()
++            val outputFile = File(downloadsDir, fileName)
++            val fos = FileOutputStream(outputFile)
++            fos.write(bytes)
++            fos.close()
++        } catch (e: Exception) {
++            Log.e("FileTransferManager", "Failed to save file: ${e.message}")
++        }
++    }
+ }

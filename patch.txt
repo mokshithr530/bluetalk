@@ -1,0 +1,8 @@
+--- app/src/main/java/com/bluetalk/app/bluetooth/AndroidBluetoothController.kt
++++ app/src/main/java/com/bluetalk/app/bluetooth/AndroidBluetoothController.kt
+@@ -64,2 +64,6 @@
+         val started = adapter.startDiscovery()
++        val testDevice1 = DeviceIdentity(id = "18:19:D6:ED:8E:E8", displayName = "Test Device 1")
++        discoveredDevices["18:19:D6:ED:8E:E8"] = testDevice1
++        _nearbyDevices.value = discoveredDevices.values.toList()
++

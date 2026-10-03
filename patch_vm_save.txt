@@ -1,0 +1,10 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
+@@ -107,6 +107,7 @@
+                             if (incomingFileBytes.size >= expectedFileSize) {
+                                 messages.value = messages.value + ("Peer sent a file: $expectedFileName")
+                                 android.util.Log.e("BluetalkFile", "File completely received!")
++                                fileTransferManager.saveReceivedFile(expectedFileName, incomingFileBytes)
+                             }
+                         }
+                         else -> {}

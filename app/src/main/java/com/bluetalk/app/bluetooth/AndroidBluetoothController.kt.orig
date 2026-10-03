@@ -62,10 +62,6 @@ class AndroidBluetoothController(
         adapter.cancelDiscovery()
         discoveredDevices.clear()
         _nearbyDevices.value = emptyList()
-        val testDevice1 = DeviceIdentity(id = "18:19:D6:ED:8E:E8", displayName = "Test Device 1")
-        discoveredDevices["18:19:D6:ED:8E:E8"] = testDevice1
-        _nearbyDevices.value = discoveredDevices.values.toList()
-
 
         val started = adapter.startDiscovery()
         _connectionState.value = if (started) {

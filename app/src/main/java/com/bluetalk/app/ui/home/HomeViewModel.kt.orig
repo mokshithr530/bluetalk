@@ -109,7 +109,6 @@ class HomeViewModel(
                             if (incomingFileBytes.size >= expectedFileSize) {
                                 messages.value = messages.value + ("Peer sent a file: $expectedFileName")
                                 android.util.Log.e("BluetalkFile", "File completely received!")
-                                fileTransferManager.saveReceivedFile(expectedFileName, incomingFileBytes)
                             }
                         }
                         else -> {}
