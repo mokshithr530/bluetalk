@@ -35,6 +35,8 @@ class HomeViewModel(
     private var expectedFileName = ""
     private var activeConnection: BluetoothConnection? = null
 
+    val transferProgress = kotlinx.coroutines.flow.MutableStateFlow<Float?>(null)
+
     val uiState: StateFlow<HomeUiState> = combine(
         bluetoothController.connectionState,
         sessionManager.sessionState,
@@ -105,10 +107,10 @@ class HomeViewModel(
                         }
                         com.bluetalk.app.protocol.PacketType.FileChunk -> {
                             incomingFileBytes += packet.payload
-                            android.util.Log.e("BluetalkFile", "Received chunk, total bytes now: ${incomingFileBytes.size} / $expectedFileSize")
+                            transferProgress.value = if (expectedFileSize > 0) incomingFileBytes.size.toFloat() / expectedFileSize.toFloat() else 0f
                             if (incomingFileBytes.size >= expectedFileSize) {
-                                messages.value = messages.value + ("Peer sent a file: $expectedFileName")
-                                android.util.Log.e("BluetalkFile", "File completely received!")
+                                messages.value = messages.value + ("System: Received file $expectedFileName (Saved to Downloads)")
+                                transferProgress.value = null
                                 fileTransferManager.saveReceivedFile(expectedFileName, incomingFileBytes)
                             }
                         }
@@ -140,7 +142,9 @@ class HomeViewModel(
         messages.value = messages.value + ("Me: Sending file ${uri.lastPathSegment ?: "unknown"}...")
         viewModelScope.launch {
             activeConnection?.let { 
+                transferProgress.value = 0f
                 fileTransferManager.sendFile(uri, it) 
+                transferProgress.value = null
                 messages.value = messages.value + ("System: File successfully sent!")
             }
         }

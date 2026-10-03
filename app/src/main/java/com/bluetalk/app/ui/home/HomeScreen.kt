@@ -51,6 +51,7 @@ fun HomeRoute(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val messages by viewModel.messages.collectAsState()
+    val progress by viewModel.transferProgress.collectAsState()
 
     HomeScreen(
         uiState = uiState,
@@ -64,6 +65,7 @@ fun HomeRoute(
         onEndSession = viewModel::endSession,
         onRequestBluetoothPermissions = onRequestBluetoothPermissions,
         messages = messages,
+        transferProgress = progress,
         onSendMessage = viewModel::sendMessage,
         onSendFile = viewModel::sendFile,
     )
@@ -80,6 +82,7 @@ fun HomeScreen(
     onEndSession: () -> Unit,
     onRequestBluetoothPermissions: () -> Unit,
     messages: List<String> = emptyList(),
+    transferProgress: Float? = null,
     onSendMessage: (String) -> Unit = {},
     onSendFile: (android.net.Uri) -> Unit = {},
 ) {
@@ -248,6 +251,13 @@ fun HomeScreen(
                     androidx.activity.result.contract.ActivityResultContracts.GetContent()
                 ) { uri ->
                     uri?.let { onSendFile(it) }
+                }
+
+                if (transferProgress != null) {
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { transferProgress },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    )
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

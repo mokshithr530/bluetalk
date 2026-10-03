@@ -1,0 +1,14 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
+@@ -109,9 +111,11 @@
+                         com.bluetalk.app.protocol.PacketType.FileChunk -> {
+                             incomingFileBytes += packet.payload
++                            transferProgress.value = if (expectedFileSize > 0) incomingFileBytes.size.toFloat() / expectedFileSize.toFloat() else 0f
+                             android.util.Log.e("BluetalkFile", "Received chunk, total bytes now: ${incomingFileBytes.size} / $expectedFileSize")
+                             if (incomingFileBytes.size >= expectedFileSize) {
+                                 messages.value = messages.value + ("System: Received file $expectedFileName (Saved to Downloads)")
+                                 android.util.Log.e("BluetalkFile", "File completely received!")
++                                transferProgress.value = null
+                                 fileTransferManager.saveReceivedFile(expectedFileName, incomingFileBytes)
+                             }
+                         }

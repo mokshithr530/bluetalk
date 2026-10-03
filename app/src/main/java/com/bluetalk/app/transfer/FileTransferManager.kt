@@ -46,12 +46,15 @@ class FileTransferManager(private val context: Context) {
 
         // Chunking
         val chunkSize = 4096
+        var chunkCount = 0
         for (i in bytes.indices step chunkSize) {
             val end = (i + chunkSize).coerceAtMost(bytes.size)
             val chunk = bytes.copyOfRange(i, end)
             val chunkPacket = Packet(PacketType.FileChunk, chunk)
             connection.write(PacketEncoder.encode(chunkPacket))
-            kotlinx.coroutines.yield() // Allow other messages to interleave!
+            
+            chunkCount++
+            if (chunkCount % 50 == 0) kotlinx.coroutines.yield() // Yield every ~200KB to allow messages
         }
     }
 
