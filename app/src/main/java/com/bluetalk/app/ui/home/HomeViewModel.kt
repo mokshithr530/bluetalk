@@ -290,6 +290,8 @@ class HomeViewModel(
 
         if (role == ConnectionRole.Host) {
             bluetoothController.stopDiscovery()
+        } else {
+            bluetoothController.startDiscovery()
         }
     }
 

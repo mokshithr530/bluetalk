@@ -79,16 +79,29 @@ class WifiDirectManager(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun connectToMac(macAddress: String) {
-        val config = WifiP2pConfig().apply {
-            deviceAddress = macAddress
-            wps.setup = android.net.wifi.WpsInfo.PBC
-        }
-        manager?.connect(channel, config, object : WifiP2pManager.ActionListener {
+        manager?.discoverPeers(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
-                Log.d("WifiDirect", "Connection initiated")
+                val config = WifiP2pConfig().apply {
+                    deviceAddress = macAddress
+                    wps.setup = android.net.wifi.WpsInfo.PBC
+                }
+                manager?.connect(channel, config, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() {
+                        Log.d("WifiDirect", "Connection initiated")
+                    }
+                    override fun onFailure(reason: Int) {
+                        Log.e("WifiDirect", "Connection failed: $reason")
+                    }
+                })
             }
             override fun onFailure(reason: Int) {
-                Log.e("WifiDirect", "Connection failed: $reason")
+                Log.e("WifiDirect", "Discover peers failed before connect: $reason")
+                // Try connecting anyway
+                val config = WifiP2pConfig().apply {
+                    deviceAddress = macAddress
+                    wps.setup = android.net.wifi.WpsInfo.PBC
+                }
+                manager?.connect(channel, config, null)
             }
         })
     }

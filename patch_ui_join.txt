@@ -1,0 +1,35 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeScreen.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeScreen.kt
+@@ -49,6 +49,7 @@
+     transferProgress: Float?,
+     onRoleSelected: (ConnectionRole) -> Unit,
+     onSelectNearbyDevice: (DeviceIdentity) -> Unit,
++    onJoinSession: (DeviceIdentity) -> Unit,
+     onCreateHostSession: () -> Unit,
+     onEndSession: () -> Unit,
+     onSendMessage: (String) -> Unit,
+@@ -260,6 +261,16 @@
+                                     onClick = { onSelectNearbyDevice(device) }
+                                 )
+                             }
++                            if (uiState.selectedDevice != null) {
++                                Spacer(modifier = Modifier.height(16.dp))
++                                Button(
++                                    onClick = { onJoinSession(uiState.selectedDevice) },
++                                    modifier = Modifier.fillMaxWidth(),
++                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
++                                ) {
++                                    Text("Join Selected Host", fontFamily = FontFamily.Monospace)
++                                }
++                            }
+                         }
+                     } else if (uiState.connectionRole == ConnectionRole.Host && uiState.sessionState is SessionState.NoSession) {
+                         Spacer(modifier = Modifier.height(16.dp))
+@@ -351,6 +362,7 @@
+         transferProgress = progress,
+         onRoleSelected = viewModel::selectConnectionRole,
+         onSelectNearbyDevice = viewModel::selectNearbyDevice,
++        onJoinSession = viewModel::joinSession,
+         onCreateHostSession = viewModel::createPrivateSession,
+         onEndSession = viewModel::endSession,
+         onSendMessage = viewModel::sendMessage,

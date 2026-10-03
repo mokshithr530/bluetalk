@@ -48,6 +48,7 @@ fun HomeScreen(
     transferProgress: Float?,
     onRoleSelected: (ConnectionRole) -> Unit,
     onSelectNearbyDevice: (DeviceIdentity) -> Unit,
+    onJoinSession: (DeviceIdentity) -> Unit,
     onCreateHostSession: () -> Unit,
     onEndSession: () -> Unit,
     onSendMessage: (String) -> Unit,
@@ -259,6 +260,16 @@ fun HomeScreen(
                                     onClick = { onSelectNearbyDevice(device) }
                                 )
                             }
+                            if (uiState.selectedDevice != null) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = { onJoinSession(uiState.selectedDevice) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                ) {
+                                    Text("Join Selected Host", fontFamily = FontFamily.Monospace)
+                                }
+                            }
                         }
                     } else if (uiState.connectionRole == ConnectionRole.Host && uiState.sessionState is SessionState.NoSession) {
                         Spacer(modifier = Modifier.height(16.dp))
@@ -351,6 +362,7 @@ fun HomeRoute(
         transferProgress = progress,
         onRoleSelected = viewModel::selectConnectionRole,
         onSelectNearbyDevice = viewModel::selectNearbyDevice,
+        onJoinSession = viewModel::joinSession,
         onCreateHostSession = viewModel::createPrivateSession,
         onEndSession = viewModel::endSession,
         onSendMessage = viewModel::sendMessage,
