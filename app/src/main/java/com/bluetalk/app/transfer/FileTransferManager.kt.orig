@@ -51,7 +51,6 @@ class FileTransferManager(private val context: Context) {
             val chunk = bytes.copyOfRange(i, end)
             val chunkPacket = Packet(PacketType.FileChunk, chunk)
             connection.write(PacketEncoder.encode(chunkPacket))
-            kotlinx.coroutines.yield() // Allow other messages to interleave!
         }
     }
 

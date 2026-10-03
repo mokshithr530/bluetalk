@@ -128,10 +128,7 @@ class HomeViewModel(
             messages.value = messages.value + ("Me: $text")
             viewModelScope.launch {
                 val packet = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.TextMessage, text.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
-                val res = activeConnection?.write(com.bluetalk.app.protocol.PacketEncoder.encode(packet))
-                if (res?.isFailure == true) {
-                    messages.value = messages.value + ("System: Failed to send message (Connection dropped)")
-                }
+                activeConnection?.write(com.bluetalk.app.protocol.PacketEncoder.encode(packet))
             }
         }
     }
