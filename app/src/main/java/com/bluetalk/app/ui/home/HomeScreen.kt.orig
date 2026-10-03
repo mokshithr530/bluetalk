@@ -159,17 +159,9 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            val context = androidx.compose.ui.platform.LocalContext.current
-
             if (uiState.connectionRole == ConnectionRole.Host) {
                 Button(
-                    onClick = { 
-                        val discoverableIntent = android.content.Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
-                            putExtra(android.bluetooth.BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
-                        }
-                        context.startActivity(discoverableIntent)
-                        onCreatePrivateSession() 
-                    },
+                    onClick = onCreatePrivateSession,
                     modifier = Modifier.fillMaxWidth(),
                     enabled = uiState.sessionState is SessionState.NoSession,
                 ) {

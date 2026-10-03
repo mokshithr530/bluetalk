@@ -1,0 +1,19 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeScreen.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeScreen.kt
+@@ -37,6 +37,7 @@
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.text.style.TextAlign
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.unit.dp
+ import com.bluetalk.app.bluetooth.BluetoothConnectionState
+ import com.bluetalk.app.bluetooth.DeviceIdentity
+@@ -107,6 +108,8 @@
+         }
+     }
+ 
++    val context = LocalContext.current
++
+     Column(
+         modifier = Modifier
+             .fillMaxSize()
