@@ -1,23 +1,20 @@
 package com.bluetalk.app.protocol
 
-class PacketDecoder {
+import java.nio.ByteBuffer
+
+object PacketDecoder {
     fun decode(bytes: ByteArray): Result<Packet> {
-        if (bytes.size < HeaderSize) {
-            return Result.failure(IllegalArgumentException("Packet is missing its header."))
+        try {
+            val buffer = ByteBuffer.wrap(bytes)
+            val typeOrdinal = buffer.get().toInt()
+            val type = PacketType.entries.getOrNull(typeOrdinal) 
+                ?: return Result.failure(IllegalArgumentException("Unknown packet type: $typeOrdinal"))
+            val length = buffer.getInt()
+            val payload = ByteArray(length)
+            buffer.get(payload)
+            return Result.success(Packet(type, payload))
+        } catch (e: Exception) {
+            return Result.failure(e)
         }
-
-        val version = bytes[0].toInt()
-        if (version != ProtocolConstants.ProtocolVersion) {
-            return Result.failure(IllegalArgumentException("Unsupported protocol version: $version"))
-        }
-
-        val type = PacketType.entries.getOrNull(bytes[1].toInt())
-            ?: return Result.failure(IllegalArgumentException("Unknown packet type: ${bytes[1]}"))
-
-        return Result.success(Packet(type = type, payload = bytes.copyOfRange(HeaderSize, bytes.size)))
-    }
-
-    private companion object {
-        const val HeaderSize = 2
     }
 }

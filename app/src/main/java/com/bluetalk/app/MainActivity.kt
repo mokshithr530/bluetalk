@@ -30,7 +30,8 @@ class MainActivity : ComponentActivity() {
                     bluetoothController = AndroidBluetoothController(applicationContext),
                     sessionManager = SessionManagerImpl(),
                     bluetoothServer = AndroidBluetoothServer(applicationContext),
-                    bluetoothClient = AndroidBluetoothClient(applicationContext)
+                    bluetoothClient = AndroidBluetoothClient(applicationContext),
+                    fileTransferManager = com.bluetalk.app.transfer.FileTransferManager(applicationContext)
                 ) as T
             }
         }

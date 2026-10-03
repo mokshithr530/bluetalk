@@ -65,6 +65,7 @@ fun HomeRoute(
         onRequestBluetoothPermissions = onRequestBluetoothPermissions,
         messages = messages,
         onSendMessage = viewModel::sendMessage,
+        onSendFile = viewModel::sendFile,
     )
 }
 
@@ -80,6 +81,7 @@ fun HomeScreen(
     onRequestBluetoothPermissions: () -> Unit,
     messages: List<String> = emptyList(),
     onSendMessage: (String) -> Unit = {},
+    onSendFile: (android.net.Uri) -> Unit = {},
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -234,6 +236,12 @@ fun HomeScreen(
                 
                 var textState by remember { mutableStateOf("") }
                 
+                val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.GetContent()
+                ) { uri ->
+                    uri?.let { onSendFile(it) }
+                }
+
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = textState,
@@ -249,6 +257,12 @@ fun HomeScreen(
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
                         Text("Send")
+                    }
+                    Button(
+                        onClick = { filePickerLauncher.launch("*/*") },
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Text("File")
                     }
                 }
 

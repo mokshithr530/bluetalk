@@ -1,0 +1,83 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
+@@ -10,6 +10,10 @@
+ import com.bluetalk.app.session.ConnectionRole
+ import com.bluetalk.app.session.ISessionManager
+ import com.bluetalk.app.session.SessionState
++import com.bluetalk.app.protocol.PacketDecoder
++import com.bluetalk.app.protocol.PacketEncoder
++import com.bluetalk.app.protocol.Packet
++import com.bluetalk.app.protocol.PacketType
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.flow.SharingStarted
+@@ -17,6 +21,7 @@
+ import kotlinx.coroutines.flow.combine
+ import kotlinx.coroutines.flow.stateIn
+ import java.nio.charset.StandardCharsets
++import android.net.Uri
+ 
+ class HomeViewModel(
+     private val bluetoothController: BluetoothController,
+@@ -28,6 +33,9 @@
+     private val selectedDevice = MutableStateFlow<DeviceIdentity?>(null)
+ 
+     val messages = MutableStateFlow<List<String>>(emptyList())
++    
++    private var incomingFileBytes = ByteArray(0)
++    private var expectedFileSize = 0
+     private var activeConnection: BluetoothConnection? = null
+ 
+     val uiState: StateFlow<HomeUiState> = combine(
+@@ -82,21 +90,48 @@
+     private fun listenToConnection(connection: BluetoothConnection) {
+         viewModelScope.launch {
+             connection.incomingBytes.collect { bytes ->
+-                val text = String(bytes, StandardCharsets.UTF_8).trimEnd(0.toChar())
+-                messages.value = messages.value + ("Peer: $text")
++                val result = PacketDecoder.decode(bytes)
++                result.onSuccess { packet ->
++                    when (packet.type) {
++                        PacketType.TextMessage -> {
++                            val text = String(packet.payload, StandardCharsets.UTF_8)
++                            messages.value = messages.value + ("Peer: $text")
++                        }
++                        PacketType.FileMetadata -> {
++                            val meta = org.json.JSONObject(String(packet.payload))
++                            expectedFileSize = meta.getInt("size")
++                            incomingFileBytes = ByteArray(0)
++                            android.util.Log.e("BluetalkFile", "Receiving file ${meta.getString("name")} of size $expectedFileSize")
++                        }
++                        PacketType.FileChunk -> {
++                            incomingFileBytes += packet.payload
++                            android.util.Log.e("BluetalkFile", "Received chunk, total bytes now: ${incomingFileBytes.size} / $expectedFileSize")
++                            if (incomingFileBytes.size >= expectedFileSize) {
++                                android.util.Log.e("BluetalkFile", "File completely received!")
++                            }
++                        }
++                        else -> {}
++                    }
++                }
+             }
+         }
+     }
+ 
+     fun sendMessage(text: String) {
+         if (text.isNotBlank()) {
+             messages.value = messages.value + ("Me: $text")
+             viewModelScope.launch {
+-                activeConnection?.write(text.toByteArray(StandardCharsets.UTF_8))
++                val packet = Packet(PacketType.TextMessage, text.toByteArray(StandardCharsets.UTF_8))
++                activeConnection?.write(PacketEncoder.encode(packet))
+             }
+         }
+     }
+ 
++    fun sendFile(uri: Uri) {
++        viewModelScope.launch {
++            activeConnection?.let { fileTransferManager.sendFile(uri, it) }
++        }
++    }
++
+     fun selectConnectionRole(role: ConnectionRole) {
+         if (sessionManager.sessionState.value !is SessionState.NoSession) {

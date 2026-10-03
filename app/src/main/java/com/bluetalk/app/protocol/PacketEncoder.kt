@@ -1,14 +1,13 @@
 package com.bluetalk.app.protocol
 
-class PacketEncoder {
-    fun encode(packet: Packet): ByteArray {
-        require(packet.payload.size <= ProtocolConstants.MaxPacketBytes) {
-            "Packet payload exceeds ${ProtocolConstants.MaxPacketBytes} bytes."
-        }
+import java.nio.ByteBuffer
 
-        return byteArrayOf(
-            ProtocolConstants.ProtocolVersion.toByte(),
-            packet.type.ordinal.toByte(),
-        ) + packet.payload
+object PacketEncoder {
+    fun encode(packet: Packet): ByteArray {
+        val buffer = ByteBuffer.allocate(1 + 4 + packet.payload.size)
+        buffer.put(packet.type.ordinal.toByte())
+        buffer.putInt(packet.payload.size)
+        buffer.put(packet.payload)
+        return buffer.array()
     }
 }

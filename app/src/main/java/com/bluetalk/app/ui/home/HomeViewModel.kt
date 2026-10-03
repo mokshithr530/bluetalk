@@ -23,11 +23,15 @@ class HomeViewModel(
     private val sessionManager: ISessionManager,
     private val bluetoothServer: BluetoothServer,
     private val bluetoothClient: BluetoothClient,
+    private val fileTransferManager: com.bluetalk.app.transfer.FileTransferManager,
 ) : ViewModel() {
     private val connectionRole = MutableStateFlow(ConnectionRole.Host)
     private val selectedDevice = MutableStateFlow<DeviceIdentity?>(null)
 
     val messages = MutableStateFlow<List<String>>(emptyList())
+
+    private var incomingFileBytes = ByteArray(0)
+    private var expectedFileSize = 0
     private var activeConnection: BluetoothConnection? = null
 
     val uiState: StateFlow<HomeUiState> = combine(
@@ -83,8 +87,33 @@ class HomeViewModel(
     private fun listenToConnection(connection: BluetoothConnection) {
         viewModelScope.launch {
             connection.incomingBytes.collect { bytes ->
-                val text = String(bytes, StandardCharsets.UTF_8).trimEnd(0.toChar())
-                messages.value = messages.value + ("Peer: $text")
+                val result = com.bluetalk.app.protocol.PacketDecoder.decode(bytes)
+                result.onSuccess { packet ->
+                    when (packet.type) {
+                        com.bluetalk.app.protocol.PacketType.TextMessage -> {
+                            val text = String(packet.payload, java.nio.charset.StandardCharsets.UTF_8)
+                            messages.value = messages.value + ("Peer: $text")
+                        }
+                        com.bluetalk.app.protocol.PacketType.FileMetadata -> {
+                            val meta = org.json.JSONObject(String(packet.payload))
+                            expectedFileSize = meta.getInt("size")
+                            incomingFileBytes = ByteArray(0)
+                            android.util.Log.e("BluetalkFile", "Receiving file ${meta.getString("name")} of size $expectedFileSize")
+                        }
+                        com.bluetalk.app.protocol.PacketType.FileChunk -> {
+                            incomingFileBytes += packet.payload
+                            android.util.Log.e("BluetalkFile", "Received chunk, total bytes now: ${incomingFileBytes.size} / $expectedFileSize")
+                            if (incomingFileBytes.size >= expectedFileSize) {
+                                android.util.Log.e("BluetalkFile", "File completely received!")
+                            }
+                        }
+                        else -> {}
+                    }
+                }.onFailure {
+                    // Fallback to raw string if older client
+                    val text = String(bytes, java.nio.charset.StandardCharsets.UTF_8).trimEnd(0.toChar())
+                    messages.value = messages.value + ("Peer: $text")
+                }
             }
         }
     }
@@ -93,8 +122,15 @@ class HomeViewModel(
         if (text.isNotBlank()) {
             messages.value = messages.value + ("Me: $text")
             viewModelScope.launch {
-                activeConnection?.write(text.toByteArray(StandardCharsets.UTF_8))
+                val packet = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.TextMessage, text.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
+                activeConnection?.write(com.bluetalk.app.protocol.PacketEncoder.encode(packet))
             }
+        }
+    }
+
+    fun sendFile(uri: android.net.Uri) {
+        viewModelScope.launch {
+            activeConnection?.let { fileTransferManager.sendFile(uri, it) }
         }
     }
 

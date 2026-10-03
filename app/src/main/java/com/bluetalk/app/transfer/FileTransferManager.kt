@@ -1,15 +1,52 @@
 package com.bluetalk.app.transfer
 
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import com.bluetalk.app.bluetooth.BluetoothConnection
+import com.bluetalk.app.protocol.Packet
+import com.bluetalk.app.protocol.PacketEncoder
+import com.bluetalk.app.protocol.PacketType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.security.MessageDigest
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 
-class FileTransferManager {
-    private val _transfers = MutableStateFlow<List<FileTransfer>>(emptyList())
+class FileTransferManager(private val context: Context) {
+    suspend fun sendFile(uri: Uri, connection: BluetoothConnection) = withContext(Dispatchers.IO) {
+        val contentResolver = context.contentResolver
+        val cursor = contentResolver.query(uri, null, null, null, null)
+        val name = cursor?.use {
+            val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            it.moveToFirst()
+            it.getString(nameIndex)
+        } ?: "unknown_file"
 
-    val transfers: StateFlow<List<FileTransfer>> = _transfers.asStateFlow()
+        val inputStream = contentResolver.openInputStream(uri) ?: return@withContext
+        val bytes = inputStream.readBytes()
+        inputStream.close()
+        
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(bytes)
+        val hashHex = hashBytes.joinToString("") { "%02x".format(it) }
 
-    fun clearEphemeralTransfers() {
-        _transfers.value = emptyList()
+        val metadata = JSONObject()
+        metadata.put("name", name)
+        metadata.put("size", bytes.size)
+        metadata.put("hash", hashHex)
+
+        val metaPacket = Packet(PacketType.FileMetadata, metadata.toString().toByteArray())
+        connection.write(PacketEncoder.encode(metaPacket))
+
+        // Chunking
+        val chunkSize = 4096
+        for (i in bytes.indices step chunkSize) {
+            val end = (i + chunkSize).coerceAtMost(bytes.size)
+            val chunk = bytes.copyOfRange(i, end)
+            val chunkPacket = Packet(PacketType.FileChunk, chunk)
+            connection.write(PacketEncoder.encode(chunkPacket))
+        }
     }
 }
