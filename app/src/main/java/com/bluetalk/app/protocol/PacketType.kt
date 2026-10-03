@@ -5,5 +5,6 @@ enum class PacketType {
     SessionEnd,
     TextMessage,
     FileMetadata,
-    FileChunk
+    FileChunk,
+    KeyExchange
 }

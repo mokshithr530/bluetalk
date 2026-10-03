@@ -17,7 +17,7 @@ import android.os.Environment
 import android.util.Log
 
 class FileTransferManager(private val context: Context) {
-    suspend fun sendFile(uri: Uri, connection: BluetoothConnection) = withContext(Dispatchers.IO) {
+    suspend fun sendFile(uri: Uri, connection: BluetoothConnection, cryptoManager: com.bluetalk.app.crypto.CryptoManager? = null) = withContext(Dispatchers.IO) {
         val contentResolver = context.contentResolver
         val cursor = contentResolver.query(uri, null, null, null, null)
         val name = cursor?.use {
@@ -41,7 +41,9 @@ class FileTransferManager(private val context: Context) {
         metadata.put("size", bytes.size)
         metadata.put("hash", hashHex)
 
-        val metaPacket = Packet(PacketType.FileMetadata, metadata.toString().toByteArray())
+        val metaPlaintext = metadata.toString().toByteArray()
+        val metaPayload = cryptoManager?.let { if (it.isReady()) it.encrypt(metaPlaintext) else metaPlaintext } ?: metaPlaintext
+        val metaPacket = Packet(PacketType.FileMetadata, metaPayload)
         connection.write(PacketEncoder.encode(metaPacket))
 
         // Chunking
@@ -49,7 +51,8 @@ class FileTransferManager(private val context: Context) {
         var chunkCount = 0
         for (i in bytes.indices step chunkSize) {
             val end = (i + chunkSize).coerceAtMost(bytes.size)
-            val chunk = bytes.copyOfRange(i, end)
+            val chunkPlaintext = bytes.copyOfRange(i, end)
+            val chunk = cryptoManager?.let { if (it.isReady()) it.encrypt(chunkPlaintext) else chunkPlaintext } ?: chunkPlaintext
             val chunkPacket = Packet(PacketType.FileChunk, chunk)
             connection.write(PacketEncoder.encode(chunkPacket))
             
