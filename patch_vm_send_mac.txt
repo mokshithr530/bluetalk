@@ -1,0 +1,20 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
+@@ -107,6 +107,17 @@
+                             com.bluetalk.app.protocol.PacketType.KeyExchange -> {
+                                 crypto.computeSharedSecret(decryptedPayload)
+                                 messages.value = messages.value + ("System: Peer Connected (E2EE \uD83D\uDD12)")
++                                
++                                // Send our MAC address so peer can connect to Wi-Fi Direct
++                                if (connectionRole.value == ConnectionRole.Host) {
++                                    wifiDirectManager.myMacAddress.value?.let { mac ->
++                                        val macBytes = mac.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
++                                        val payload = if (crypto.isReady()) crypto.encrypt(macBytes) else macBytes
++                                        val macPacket = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.WifiDirectMac, payload)
++                                        connection.write(com.bluetalk.app.protocol.PacketEncoder.encode(macPacket))
++                                        messages.value = messages.value + ("System: Host advertising high-speed Wi-Fi Direct ($mac)")
++                                    }
++                                }
+                             }
+                             com.bluetalk.app.protocol.PacketType.TextMessage -> {
+                                 val text = String(decryptedPayload, java.nio.charset.StandardCharsets.UTF_8)

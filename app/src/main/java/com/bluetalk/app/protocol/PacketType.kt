@@ -6,5 +6,7 @@ enum class PacketType {
     TextMessage,
     FileMetadata,
     FileChunk,
-    KeyExchange
+    KeyExchange,
+    WifiDirectMac,
+    WifiDirectServerReady
 }

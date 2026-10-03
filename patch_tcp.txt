@@ -1,0 +1,40 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
+@@ -40,6 +40,9 @@
+ 
+     val transferProgress = kotlinx.coroutines.flow.MutableStateFlow<Float?>(null)
+ 
++    private var wifiServerSocket: java.net.ServerSocket? = null
++    private val wifiClients = mutableListOf<java.net.Socket>()
++
+     val uiState: StateFlow<HomeUiState> = combine(
+         bluetoothController.connectionState,
+         sessionManager.sessionState,
+@@ -64,6 +67,29 @@
+         bluetoothController.refreshAvailability()
+         wifiDirectManager.startListening()
++        
++        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
++            wifiDirectManager.connectionInfo.collect { info ->
++                if (info?.groupFormed == true && info.isGroupOwner && connectionRole.value == ConnectionRole.Host) {
++                    // We are the Host and Wi-Fi Direct is ready.
++                    try {
++                        if (wifiServerSocket == null) {
++                            wifiServerSocket = java.net.ServerSocket(8888)
++                            messages.value = messages.value + ("System: High-speed TCP server started!")
++                            
++                            // Accept clients in background
++                            while (true) {
++                                val client = wifiServerSocket?.accept() ?: break
++                                wifiClients.add(client)
++                                messages.value = messages.value + ("System: Peer joined TCP high-speed network!")
++                            }
++                        }
++                    } catch (e: Exception) {
++                    }
++                }
++            }
++        }
+     }
+ 
+     fun createPrivateSession(name: String = "Private Session") {

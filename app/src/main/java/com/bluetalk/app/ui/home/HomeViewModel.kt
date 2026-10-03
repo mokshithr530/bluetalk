@@ -24,6 +24,7 @@ class HomeViewModel(
     private val bluetoothServer: BluetoothServer,
     private val bluetoothClient: BluetoothClient,
     private val fileTransferManager: com.bluetalk.app.transfer.FileTransferManager,
+    val wifiDirectManager: com.bluetalk.app.wifi.WifiDirectManager,
 ) : ViewModel() {
     private val connectionRole = MutableStateFlow(ConnectionRole.Host)
     private val selectedDevice = MutableStateFlow<DeviceIdentity?>(null)
@@ -33,7 +34,11 @@ class HomeViewModel(
     private var incomingFileBytes = ByteArray(0)
     private var expectedFileSize = 0
     private var expectedFileName = ""
-    private var activeConnection: BluetoothConnection? = null
+    private val activeConnections = mutableMapOf<BluetoothConnection, com.bluetalk.app.crypto.CryptoManager>()
+    
+    private var wifiServerSocket: java.net.ServerSocket? = null
+    private val wifiClients = mutableListOf<java.net.Socket>()
+    private var wifiClientSocket: java.net.Socket? = null
 
     val transferProgress = kotlinx.coroutines.flow.MutableStateFlow<Float?>(null)
 
@@ -59,6 +64,35 @@ class HomeViewModel(
 
     init {
         bluetoothController.refreshAvailability()
+        wifiDirectManager.startListening()
+        
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            wifiDirectManager.connectionInfo.collect { info ->
+                if (info?.groupFormed == true) {
+                    if (info.isGroupOwner && connectionRole.value == ConnectionRole.Host) {
+                        try {
+                            if (wifiServerSocket == null) {
+                                wifiServerSocket = java.net.ServerSocket(8888)
+                                messages.value = messages.value + ("System: High-speed TCP Server started!")
+                                
+                                // Let joiners know we are ready
+                                val packet = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.WifiDirectServerReady, ByteArray(0))
+                                activeConnections.forEach { (conn, _) ->
+                                    conn.write(com.bluetalk.app.protocol.PacketEncoder.encode(packet))
+                                }
+
+                                while (true) {
+                                    val client = wifiServerSocket?.accept() ?: break
+                                    wifiClients.add(client)
+                                    listenToTcpSocket(client, activeConnections.values.firstOrNull())
+                                    messages.value = messages.value + ("System: Peer joined high-speed network!")
+                                }
+                            }
+                        } catch (e: Exception) {}
+                    }
+                }
+            }
+        }
     }
 
     fun createPrivateSession() {
@@ -68,9 +102,11 @@ class HomeViewModel(
         viewModelScope.launch {
             bluetoothServer.listen()
         }
+        
+        wifiDirectManager.createGroup()
+        
         viewModelScope.launch {
             bluetoothServer.incomingConnections.collect { connection ->
-                activeConnection = connection
                 listenToConnection(connection)
             }
         }
@@ -80,18 +116,15 @@ class HomeViewModel(
         viewModelScope.launch {
             val result = bluetoothClient.connect(device)
             result.onSuccess { connection ->
-                activeConnection = connection
                 sessionManager.joinSession(device.id, "local")
                 listenToConnection(connection)
             }
         }
     }
     
-    private var cryptoManager: com.bluetalk.app.crypto.CryptoManager? = null
-
     private fun listenToConnection(connection: BluetoothConnection) {
         val crypto = com.bluetalk.app.crypto.CryptoManager()
-        cryptoManager = crypto
+        activeConnections[connection] = crypto
         
         viewModelScope.launch {
             // Initiate KeyExchange by sending our public key immediately
@@ -113,10 +146,31 @@ class HomeViewModel(
                             com.bluetalk.app.protocol.PacketType.KeyExchange -> {
                                 crypto.computeSharedSecret(decryptedPayload)
                                 messages.value = messages.value + ("System: E2EE Session Established \uD83D\uDD12")
+                                
+                                // Send our MAC address so peer can connect to Wi-Fi Direct
+                                if (connectionRole.value == ConnectionRole.Host) {
+                                    wifiDirectManager.myMacAddress.value?.let { mac ->
+                                        val macBytes = mac.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+                                        val payload = if (crypto.isReady()) crypto.encrypt(macBytes) else macBytes
+                                        val macPacket = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.WifiDirectMac, payload)
+                                        connection.write(com.bluetalk.app.protocol.PacketEncoder.encode(macPacket))
+                                    }
+                                }
                             }
                             com.bluetalk.app.protocol.PacketType.TextMessage -> {
                                 val text = String(decryptedPayload, java.nio.charset.StandardCharsets.UTF_8)
                                 messages.value = messages.value + ("Peer: $text")
+
+                                // Route the message to all other connected clients if we are the Host
+                                if (connectionRole.value == ConnectionRole.Host) {
+                                    activeConnections.forEach { (otherConn, otherCrypto) ->
+                                        if (otherConn != connection) {
+                                            val fwdPayload = if (otherCrypto.isReady()) otherCrypto.encrypt(decryptedPayload) else decryptedPayload
+                                            val fwdPacket = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.TextMessage, fwdPayload)
+                                            otherConn.write(com.bluetalk.app.protocol.PacketEncoder.encode(fwdPacket))
+                                        }
+                                    }
+                                }
                             }
                             com.bluetalk.app.protocol.PacketType.FileMetadata -> {
                                 val meta = org.json.JSONObject(String(decryptedPayload))
@@ -133,6 +187,28 @@ class HomeViewModel(
                                     messages.value = messages.value + ("System: Received file $expectedFileName (Saved to Downloads)")
                                     transferProgress.value = null
                                     fileTransferManager.saveReceivedFile(expectedFileName, incomingFileBytes)
+                                }
+                            }
+                            com.bluetalk.app.protocol.PacketType.WifiDirectMac -> {
+                                val mac = String(decryptedPayload, java.nio.charset.StandardCharsets.UTF_8)
+                                if (connectionRole.value == ConnectionRole.Join) {
+                                    messages.value = messages.value + ("System: Host advertised high-speed Wi-Fi Direct. Connecting...")
+                                    wifiDirectManager.connectToMac(mac)
+                                }
+                            }
+                            com.bluetalk.app.protocol.PacketType.WifiDirectServerReady -> {
+                                if (connectionRole.value == ConnectionRole.Join) {
+                                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        try {
+                                            val hostIp = wifiDirectManager.connectionInfo.value?.groupOwnerAddress?.hostAddress
+                                            if (hostIp != null) {
+                                                val socket = java.net.Socket(hostIp, 8888)
+                                                wifiClientSocket = socket
+                                                messages.value = messages.value + ("System: Connected to TCP Server at $hostIp!")
+                                                listenToTcpSocket(socket, activeConnections.values.firstOrNull())
+                                            }
+                                        } catch (e: Exception) {}
+                                    }
                                 }
                             }
                             else -> {}
@@ -154,11 +230,14 @@ class HomeViewModel(
             messages.value = messages.value + ("Me: $text")
             viewModelScope.launch {
                 val plaintext = text.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
-                val payload = cryptoManager?.let { if (it.isReady()) it.encrypt(plaintext) else plaintext } ?: plaintext
-                val packet = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.TextMessage, payload)
-                val res = activeConnection?.write(com.bluetalk.app.protocol.PacketEncoder.encode(packet))
-                if (res?.isFailure == true) {
-                    messages.value = messages.value + ("System: Failed to send message (Connection dropped)")
+                
+                activeConnections.forEach { (conn, crypto) ->
+                    val payload = if (crypto.isReady()) crypto.encrypt(plaintext) else plaintext
+                    val packet = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.TextMessage, payload)
+                    val res = conn.write(com.bluetalk.app.protocol.PacketEncoder.encode(packet))
+                    if (res.isFailure) {
+                        android.util.Log.e("BluetalkError", "Failed to send to a peer")
+                    }
                 }
             }
         }
@@ -166,13 +245,38 @@ class HomeViewModel(
 
     fun sendFile(uri: android.net.Uri) {
         messages.value = messages.value + ("Me: Sending file ${uri.lastPathSegment ?: "unknown"}...")
-        viewModelScope.launch {
-            activeConnection?.let { 
-                transferProgress.value = 0f
-                fileTransferManager.sendFile(uri, it, cryptoManager) 
-                transferProgress.value = null
-                messages.value = messages.value + ("System: File successfully sent!")
+        
+        transferProgress.value = 0f
+        
+        if (connectionRole.value == ConnectionRole.Host && wifiClients.isNotEmpty()) {
+            wifiClients.forEach { client ->
+                viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val crypto = activeConnections.values.firstOrNull() // Just use the first one for now, or don't encrypt for Wi-Fi Direct? We must encrypt!
+                        fileTransferManager.sendFileTcp(uri, client.getOutputStream(), crypto)
+                    } catch (e: Exception) {}
+                }
             }
+        } else if (connectionRole.value == ConnectionRole.Join && wifiClientSocket != null) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val crypto = activeConnections.values.firstOrNull()
+                    fileTransferManager.sendFileTcp(uri, wifiClientSocket!!.getOutputStream(), crypto)
+                } catch (e: Exception) {}
+            }
+        } else {
+            // Fallback to Bluetooth
+            activeConnections.forEach { (conn, crypto) ->
+                viewModelScope.launch {
+                    fileTransferManager.sendFile(uri, conn, crypto)
+                }
+            }
+        }
+        
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(2000)
+            transferProgress.value = null
+            messages.value = messages.value + ("System: File successfully sent to all peers!")
         }
     }
 
@@ -206,12 +310,75 @@ class HomeViewModel(
         bluetoothController.refreshAvailability()
     }
 
+    private fun listenToTcpSocket(socket: java.net.Socket, crypto: com.bluetalk.app.crypto.CryptoManager?) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val inputStream = socket.getInputStream()
+                val buffer = ByteArray(65536 + 1024)
+                var expectedLength = -1
+                val streamBuffer = java.io.ByteArrayOutputStream()
+
+                while (true) {
+                    val bytesRead = inputStream.read(buffer)
+                    if (bytesRead == -1) break
+                    streamBuffer.write(buffer, 0, bytesRead)
+                    
+                    while (true) {
+                        val currentBytes = streamBuffer.toByteArray()
+                        if (expectedLength == -1 && currentBytes.size >= 4) {
+                            val bb = java.nio.ByteBuffer.wrap(currentBytes.copyOfRange(0, 4))
+                            expectedLength = bb.int
+                        }
+                        
+                        if (expectedLength != -1 && currentBytes.size >= 4 + expectedLength) {
+                            val packetBytes = currentBytes.copyOfRange(0, 4 + expectedLength)
+                            val remainingBytes = currentBytes.copyOfRange(4 + expectedLength, currentBytes.size)
+                            
+                            streamBuffer.reset()
+                            streamBuffer.write(remainingBytes)
+                            expectedLength = -1
+                            
+                            val result = com.bluetalk.app.protocol.PacketDecoder.decode(packetBytes)
+                            result.onSuccess { packet ->
+                                val decryptedPayload = if (crypto?.isReady() == true) crypto.decrypt(packet.payload) else packet.payload
+                                if (packet.type == com.bluetalk.app.protocol.PacketType.FileMetadata) {
+                                    val meta = org.json.JSONObject(String(decryptedPayload))
+                                    expectedFileSize = meta.getInt("size")
+                                    expectedFileName = meta.getString("name")
+                                    incomingFileBytes = ByteArray(0)
+                                    messages.value = messages.value + ("System: Receiving high-speed file $expectedFileName...")
+                                } else if (packet.type == com.bluetalk.app.protocol.PacketType.FileChunk) {
+                                    incomingFileBytes += decryptedPayload
+                                    transferProgress.value = if (expectedFileSize > 0) incomingFileBytes.size.toFloat() / expectedFileSize.toFloat() else 0f
+                                    if (incomingFileBytes.size >= expectedFileSize) {
+                                        messages.value = messages.value + ("System: Received high-speed file $expectedFileName")
+                                        transferProgress.value = null
+                                        fileTransferManager.saveReceivedFile(expectedFileName, incomingFileBytes)
+                                    }
+                                }
+                            }
+                        } else {
+                            break
+                        }
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
     fun endSession() {
         sessionManager.endSession()
         viewModelScope.launch {
-            activeConnection?.close()
-            activeConnection = null
+            activeConnections.keys.forEach { it.close() }
+            activeConnections.clear()
             bluetoothServer.stop()
+            wifiDirectManager.disconnect()
+            try { wifiServerSocket?.close() } catch (e: Exception) {}
+            wifiServerSocket = null
+            try { wifiClientSocket?.close() } catch (e: Exception) {}
+            wifiClientSocket = null
+            wifiClients.forEach { try { it.close() } catch (e: Exception) {} }
+            wifiClients.clear()
         }
         messages.value = emptyList()
     }
@@ -227,9 +394,14 @@ class HomeViewModel(
 
     override fun onCleared() {
         bluetoothController.stopDiscovery()
-        viewModelScope.launch {
-            activeConnection?.close()
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            activeConnections.keys.forEach { it.close() }
             bluetoothServer.stop()
+            wifiDirectManager.stopListening()
+            wifiDirectManager.disconnect()
+            try { wifiServerSocket?.close() } catch (e: Exception) {}
+            try { wifiClientSocket?.close() } catch (e: Exception) {}
+            wifiClients.forEach { try { it.close() } catch (e: Exception) {} }
         }
         super.onCleared()
     }

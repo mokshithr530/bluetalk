@@ -1,0 +1,61 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
+@@ -19,6 +19,7 @@
+ import kotlinx.coroutines.flow.combine
+ import kotlinx.coroutines.flow.stateIn
+ import kotlinx.coroutines.launch
++import com.bluetalk.app.wifi.WifiDirectManager
+ 
+ class HomeViewModel(
+     private val bluetoothController: BluetoothController,
+@@ -34,6 +35,7 @@
+     private var expectedFileSize = 0
+     private var expectedFileName = ""
+     private val activeConnections = mutableMapOf<BluetoothConnection, com.bluetalk.app.crypto.CryptoManager>()
++    private val wifiDirectManager = WifiDirectManager(bluetoothController.context)
+ 
+     val transferProgress = kotlinx.coroutines.flow.MutableStateFlow<Float?>(null)
+ 
+@@ -62,6 +64,15 @@
+         }
+     }
+ 
++    init {
++        wifiDirectManager.startListening()
++        viewModelScope.launch {
++            wifiDirectManager.myMacAddress.collect { mac ->
++                // When we get our MAC, if we are host, broadcast it?
++            }
++        }
++    }
++
+     fun createPrivateSession(name: String = "Private Session") {
+         if (connectionRole.value != ConnectionRole.Host) return
+         connectionRole.value = ConnectionRole.Host
+@@ -69,6 +80,9 @@
+         viewModelScope.launch {
+             bluetoothServer.listen()
+         }
++        
++        // Host creates Wi-Fi Direct Group
++        wifiDirectManager.createGroup()
++        
+         viewModelScope.launch {
+             bluetoothServer.incomingConnections.collect { connection ->
+                 listenToConnection(connection)
+@@ -124,6 +138,24 @@
+                                     }
+                                 }
+                             }
++                            com.bluetalk.app.protocol.PacketType.WifiDirectMac -> {
++                                val mac = String(decryptedPayload, java.nio.charset.StandardCharsets.UTF_8)
++                                if (connectionRole.value == ConnectionRole.Join) {
++                                    messages.value = messages.value + ("System: Connecting to Host's high-speed Wi-Fi Direct...")
++                                    wifiDirectManager.connectToMac(mac)
++                                }
++                            }
++                            com.bluetalk.app.protocol.PacketType.WifiDirectServerReady -> {
++                                val ip = String(decryptedPayload, java.nio.charset.StandardCharsets.UTF_8)
++                                // The Host's Wi-Fi Direct IP is ready! We can send files over TCP!
++                                // We will store this IP.
++                            }

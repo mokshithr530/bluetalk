@@ -1,0 +1,163 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeScreen.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeScreen.kt
+@@ -103,6 +103,117 @@
+         }
+     }
+ 
++    if (uiState.sessionState is SessionState.Active) {
++        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
++            Row(
++                modifier = Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.SpaceBetween,
++                verticalAlignment = Alignment.CenterVertically
++            ) {
++                Text(
++                    text = uiState.sessionState.asDisplayText(),
++                    style = MaterialTheme.typography.titleMedium,
++                    color = MaterialTheme.colorScheme.primary
++                )
++                OutlinedButton(onClick = onEndSession) {
++                    Text("End Session", color = MaterialTheme.colorScheme.error)
++                }
++            }
++            
++            Spacer(modifier = Modifier.height(16.dp))
++            
++            LazyColumn(
++                modifier = Modifier.weight(1f).fillMaxWidth(),
++                verticalArrangement = Arrangement.spacedBy(12.dp)
++            ) {
++                items(messages) { msg ->
++                    val isMe = msg.startsWith("Me:")
++                    val isSystem = msg.startsWith("System:")
++                    val color = when {
++                        isSystem -> MaterialTheme.colorScheme.tertiary
++                        isMe -> MaterialTheme.colorScheme.onSurface
++                        else -> MaterialTheme.colorScheme.primary
++                    }
++                    Text(
++                        text = msg,
++                        style = MaterialTheme.typography.bodyLarge,
++                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
++                        color = color,
++                        modifier = Modifier.fillMaxWidth()
++                    )
++                }
++            }
++            
++            val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
++                androidx.activity.result.contract.ActivityResultContracts.GetContent()
++            ) { uri ->
++                uri?.let { onSendFile(it) }
++            }
++
++            if (transferProgress != null) {
++                val progressPercent = (transferProgress * 100).toInt()
++                val barLength = 20
++                val filled = (transferProgress * barLength).toInt()
++                val bar = "[" + "#".repeat(filled) + ".".repeat(barLength - filled) + "]"
++                
++                Text(
++                    text = "Transferring $bar $progressPercent%",
++                    style = MaterialTheme.typography.bodyMedium,
++                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
++                    color = MaterialTheme.colorScheme.tertiary,
++                    modifier = Modifier.padding(vertical = 8.dp)
++                )
++            }
++
++            var textState by remember { mutableStateOf("") }
++            Row(
++                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
++                verticalAlignment = Alignment.CenterVertically
++            ) {
++                OutlinedTextField(
++                    value = textState,
++                    onValueChange = { textState = it },
++                    modifier = Modifier.weight(1f),
++                    placeholder = { 
++                        Text("Type a message...", fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) 
++                    },
++                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
++                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
++                )
++                Spacer(modifier = Modifier.width(8.dp))
++                Button(
++                    onClick = { 
++                        if (textState.isNotBlank()) {
++                            onSendMessage(textState)
++                            textState = ""
++                        }
++                    },
++                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
++                ) {
++                    Text("Send", fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
++                }
++                Spacer(modifier = Modifier.width(8.dp))
++                OutlinedButton(
++                    onClick = { filePickerLauncher.launch("*/*") },
++                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
++                ) {
++                    Text("File", fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
++                }
++            }
++        }
++        return
++    }
++
+     Column(
+         modifier = Modifier
+             .fillMaxSize()
+@@ -232,54 +343,6 @@
+                 }
+             }
+-
+-            if (uiState.sessionState is SessionState.Active) {
+-                Spacer(modifier = Modifier.height(12.dp))
+-                
+-                Text("Messages", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+-                
+-                LazyColumn(
+-                    modifier = Modifier.fillMaxWidth().height(200.dp),
+-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+-                ) {
+-                    items(messages) { msg ->
+-                        Text(msg)
+-                    }
+-                }
+-                
+-                var textState by remember { mutableStateOf("") }
+-                
+-                val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+-                    androidx.activity.result.contract.ActivityResultContracts.GetContent()
+-                ) { uri ->
+-                    uri?.let { onSendFile(it) }
+-                }
+-
+-                if (transferProgress != null) {
+-                    androidx.compose.material3.LinearProgressIndicator(
+-                        progress = { transferProgress },
+-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+-                    )
+-                }
+-
+-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+-                    OutlinedTextField(
+-                        value = textState,
+-                        onValueChange = { textState = it },
+-                        modifier = Modifier.weight(1f),
+-                        placeholder = { Text("Type a message...") }
+-                    )
+-                    Spacer(modifier = Modifier.width(8.dp))
+-                    Button(onClick = { onSendMessage(textState); textState = "" }) {
+-                        Text("Send")
+-                    }
+-                    Spacer(modifier = Modifier.width(8.dp))
+-                    OutlinedButton(onClick = { filePickerLauncher.launch("*/*") }) {
+-                        Text("File")
+-                    }
+-                }
+-            }
+             
+             Spacer(modifier = Modifier.height(16.dp))
+             

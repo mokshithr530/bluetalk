@@ -1,0 +1,72 @@
+--- app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
++++ app/src/main/java/com/bluetalk/app/ui/home/HomeViewModel.kt
+@@ -85,6 +85,7 @@
+                                 while (true) {
+                                     val client = wifiServerSocket?.accept() ?: break
+                                     wifiClients.add(client)
++                                    listenToTcpSocket(client, activeConnections.values.firstOrNull())
+                                     messages.value = messages.value + ("System: Peer joined high-speed network!")
+                                 }
+                             }
+@@ -194,6 +195,50 @@
+         }
+     }
+ 
++    private fun listenToTcpSocket(socket: java.net.Socket, crypto: com.bluetalk.app.crypto.CryptoManager?) {
++        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
++            try {
++                val inputStream = socket.getInputStream()
++                val buffer = ByteArray(65536 + 1024)
++                var expectedLength = -1
++                val streamBuffer = java.io.ByteArrayOutputStream()
++
++                while (true) {
++                    val bytesRead = inputStream.read(buffer)
++                    if (bytesRead == -1) break
++                    streamBuffer.write(buffer, 0, bytesRead)
++                    
++                    while (true) {
++                        val currentBytes = streamBuffer.toByteArray()
++                        if (expectedLength == -1 && currentBytes.size >= 4) {
++                            val bb = java.nio.ByteBuffer.wrap(currentBytes.copyOfRange(0, 4))
++                            expectedLength = bb.int
++                        }
++                        
++                        if (expectedLength != -1 && currentBytes.size >= 4 + expectedLength) {
++                            val packetBytes = currentBytes.copyOfRange(0, 4 + expectedLength)
++                            val remainingBytes = currentBytes.copyOfRange(4 + expectedLength, currentBytes.size)
++                            
++                            streamBuffer.reset()
++                            streamBuffer.write(remainingBytes)
++                            expectedLength = -1
++                            
++                            // Process packetBytes
++                            // For now we only expect FileMetadata and FileChunk over TCP
++                            val result = com.bluetalk.app.protocol.PacketDecoder.decode(packetBytes)
++                            result.onSuccess { packet ->
++                                val decryptedPayload = if (crypto?.isReady() == true) crypto.decrypt(packet.payload) else packet.payload
++                                if (packet.type == com.bluetalk.app.protocol.PacketType.FileMetadata) {
++                                    val meta = org.json.JSONObject(String(decryptedPayload))
++                                    expectedFileSize = meta.getInt("size")
++                                    expectedFileName = meta.getString("name")
++                                    incomingFileBytes = ByteArray(0)
++                                    messages.value = messages.value + ("System: Receiving high-speed file $expectedFileName...")
++                                } else if (packet.type == com.bluetalk.app.protocol.PacketType.FileChunk) {
++                                    incomingFileBytes += decryptedPayload
++                                    transferProgress.value = if (expectedFileSize > 0) incomingFileBytes.size.toFloat() / expectedFileSize.toFloat() else 0f
++                                    if (incomingFileBytes.size >= expectedFileSize) {
++                                        messages.value = messages.value + ("System: Received high-speed file $expectedFileName")
++                                        transferProgress.value = null
++                                        fileTransferManager.saveReceivedFile(expectedFileName, incomingFileBytes)
++                                    }
++                                }
++                            }
++                        } else {
++                            break
++                        }
++                    }
++                }
++            } catch (e: Exception) {}
++        }
++    }
++

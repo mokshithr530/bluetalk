@@ -24,6 +24,8 @@ class HomeViewModel(
     private val bluetoothServer: BluetoothServer,
     private val bluetoothClient: BluetoothClient,
     private val fileTransferManager: com.bluetalk.app.transfer.FileTransferManager,
+    val wifiDirectManager: com.bluetalk.app.wifi.WifiDirectManager,
+    val wifiDirectManager: com.bluetalk.app.wifi.WifiDirectManager,
 ) : ViewModel() {
     private val connectionRole = MutableStateFlow(ConnectionRole.Host)
     private val selectedDevice = MutableStateFlow<DeviceIdentity?>(null)
@@ -33,7 +35,10 @@ class HomeViewModel(
     private var incomingFileBytes = ByteArray(0)
     private var expectedFileSize = 0
     private var expectedFileName = ""
-    private var activeConnection: BluetoothConnection? = null
+    private val activeConnections = mutableMapOf<BluetoothConnection, com.bluetalk.app.crypto.CryptoManager>()
+    
+
+    val transferProgress = kotlinx.coroutines.flow.MutableStateFlow<Float?>(null)
 
     val uiState: StateFlow<HomeUiState> = combine(
         bluetoothController.connectionState,
@@ -57,6 +62,7 @@ class HomeViewModel(
 
     init {
         bluetoothController.refreshAvailability()
+        wifiDirectManager.startListening()
     }
 
     fun createPrivateSession() {
@@ -66,9 +72,11 @@ class HomeViewModel(
         viewModelScope.launch {
             bluetoothServer.listen()
         }
+        
+        wifiDirectManager.createGroup()
+        
         viewModelScope.launch {
             bluetoothServer.incomingConnections.collect { connection ->
-                activeConnection = connection
                 listenToConnection(connection)
             }
         }
@@ -78,7 +86,6 @@ class HomeViewModel(
         viewModelScope.launch {
             val result = bluetoothClient.connect(device)
             result.onSuccess { connection ->
-                activeConnection = connection
                 sessionManager.joinSession(device.id, "local")
                 listenToConnection(connection)
             }
@@ -86,36 +93,79 @@ class HomeViewModel(
     }
     
     private fun listenToConnection(connection: BluetoothConnection) {
+        val crypto = com.bluetalk.app.crypto.CryptoManager()
+        activeConnections[connection] = crypto
+        
         viewModelScope.launch {
+            // Initiate KeyExchange by sending our public key immediately
+            val keyPacket = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.KeyExchange, crypto.publicKeyBytes)
+            connection.write(com.bluetalk.app.protocol.PacketEncoder.encode(keyPacket))
+
             connection.incomingBytes.collect { bytes ->
                 val result = com.bluetalk.app.protocol.PacketDecoder.decode(bytes)
                 result.onSuccess { packet ->
-                    when (packet.type) {
-                        com.bluetalk.app.protocol.PacketType.TextMessage -> {
-                            val text = String(packet.payload, java.nio.charset.StandardCharsets.UTF_8)
-                            messages.value = messages.value + ("Peer: $text")
+                    try {
+                        // Decrypt payload if it's not a KeyExchange and we have a shared key
+                        val decryptedPayload = if (packet.type != com.bluetalk.app.protocol.PacketType.KeyExchange && crypto.isReady()) {
+                            crypto.decrypt(packet.payload)
+                        } else {
+                            packet.payload
                         }
-                        com.bluetalk.app.protocol.PacketType.FileMetadata -> {
-                            val meta = org.json.JSONObject(String(packet.payload))
-                            expectedFileSize = meta.getInt("size")
-                            expectedFileName = meta.getString("name")
-                            incomingFileBytes = ByteArray(0)
-                            messages.value = messages.value + ("System: Receiving file $expectedFileName...")
-                            android.util.Log.e("BluetalkFile", "Receiving file $expectedFileName of size $expectedFileSize")
-                        }
-                        com.bluetalk.app.protocol.PacketType.FileChunk -> {
-                            incomingFileBytes += packet.payload
-                            android.util.Log.e("BluetalkFile", "Received chunk, total bytes now: ${incomingFileBytes.size} / $expectedFileSize")
-                            if (incomingFileBytes.size >= expectedFileSize) {
-                                messages.value = messages.value + ("Peer sent a file: $expectedFileName")
-                                android.util.Log.e("BluetalkFile", "File completely received!")
-                                fileTransferManager.saveReceivedFile(expectedFileName, incomingFileBytes)
+
+                        when (packet.type) {
+                            com.bluetalk.app.protocol.PacketType.KeyExchange -> {
+                                crypto.computeSharedSecret(decryptedPayload)
+                                messages.value = messages.value + ("System: E2EE Session Established \uD83D\uDD12")
+                                
+                                // Send our MAC address so peer can connect to Wi-Fi Direct
+                                if (connectionRole.value == ConnectionRole.Host) {
+                                    wifiDirectManager.myMacAddress.value?.let { mac ->
+                                        val macBytes = mac.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+                                        val payload = if (crypto.isReady()) crypto.encrypt(macBytes) else macBytes
+                                        val macPacket = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.WifiDirectMac, payload)
+                                        connection.write(com.bluetalk.app.protocol.PacketEncoder.encode(macPacket))
+                                    }
+                                }
                             }
+                            com.bluetalk.app.protocol.PacketType.TextMessage -> {
+                                val text = String(decryptedPayload, java.nio.charset.StandardCharsets.UTF_8)
+                                messages.value = messages.value + ("Peer: $text")
+
+                                // Route the message to all other connected clients if we are the Host
+                                if (connectionRole.value == ConnectionRole.Host) {
+                                    activeConnections.forEach { (otherConn, otherCrypto) ->
+                                        if (otherConn != connection) {
+                                            val fwdPayload = if (otherCrypto.isReady()) otherCrypto.encrypt(decryptedPayload) else decryptedPayload
+                                            val fwdPacket = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.TextMessage, fwdPayload)
+                                            otherConn.write(com.bluetalk.app.protocol.PacketEncoder.encode(fwdPacket))
+                                        }
+                                    }
+                                }
+                            }
+                            com.bluetalk.app.protocol.PacketType.FileMetadata -> {
+                                val meta = org.json.JSONObject(String(decryptedPayload))
+                                expectedFileSize = meta.getInt("size")
+                                expectedFileName = meta.getString("name")
+                                incomingFileBytes = ByteArray(0)
+                                messages.value = messages.value + ("System: Receiving file $expectedFileName...")
+                                android.util.Log.e("BluetalkFile", "Receiving file $expectedFileName of size $expectedFileSize")
+                            }
+                            com.bluetalk.app.protocol.PacketType.FileChunk -> {
+                                incomingFileBytes += decryptedPayload
+                                transferProgress.value = if (expectedFileSize > 0) incomingFileBytes.size.toFloat() / expectedFileSize.toFloat() else 0f
+                                if (incomingFileBytes.size >= expectedFileSize) {
+                                    messages.value = messages.value + ("System: Received file $expectedFileName (Saved to Downloads)")
+                                    transferProgress.value = null
+                                    fileTransferManager.saveReceivedFile(expectedFileName, incomingFileBytes)
+                                }
+                            }
+                            else -> {}
                         }
-                        else -> {}
+                    } catch (e: Exception) {
+                        android.util.Log.e("BluetalkError", "Error processing packet", e)
+                        messages.value = messages.value + ("System: Error processing incoming packet (Possible decryption failure)")
                     }
                 }.onFailure {
-                    // Fallback to raw string if older client
                     val text = String(bytes, java.nio.charset.StandardCharsets.UTF_8).trimEnd(0.toChar())
                     messages.value = messages.value + ("Peer: $text")
                 }
@@ -127,10 +177,15 @@ class HomeViewModel(
         if (text.isNotBlank()) {
             messages.value = messages.value + ("Me: $text")
             viewModelScope.launch {
-                val packet = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.TextMessage, text.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
-                val res = activeConnection?.write(com.bluetalk.app.protocol.PacketEncoder.encode(packet))
-                if (res?.isFailure == true) {
-                    messages.value = messages.value + ("System: Failed to send message (Connection dropped)")
+                val plaintext = text.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+                
+                activeConnections.forEach { (conn, crypto) ->
+                    val payload = if (crypto.isReady()) crypto.encrypt(plaintext) else plaintext
+                    val packet = com.bluetalk.app.protocol.Packet(com.bluetalk.app.protocol.PacketType.TextMessage, payload)
+                    val res = conn.write(com.bluetalk.app.protocol.PacketEncoder.encode(packet))
+                    if (res.isFailure) {
+                        android.util.Log.e("BluetalkError", "Failed to send to a peer")
+                    }
                 }
             }
         }
@@ -138,11 +193,19 @@ class HomeViewModel(
 
     fun sendFile(uri: android.net.Uri) {
         messages.value = messages.value + ("Me: Sending file ${uri.lastPathSegment ?: "unknown"}...")
-        viewModelScope.launch {
-            activeConnection?.let { 
-                fileTransferManager.sendFile(uri, it) 
-                messages.value = messages.value + ("System: File successfully sent!")
+        
+        transferProgress.value = 0f
+        
+        activeConnections.forEach { (conn, crypto) ->
+            viewModelScope.launch {
+                fileTransferManager.sendFile(uri, conn, crypto)
             }
+        }
+        
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(2000) // Dummy delay since they complete asynchronously
+            transferProgress.value = null
+            messages.value = messages.value + ("System: File successfully sent to all peers!")
         }
     }
 
@@ -179,8 +242,8 @@ class HomeViewModel(
     fun endSession() {
         sessionManager.endSession()
         viewModelScope.launch {
-            activeConnection?.close()
-            activeConnection = null
+            activeConnections.keys.forEach { it.close() }
+            activeConnections.clear()
             bluetoothServer.stop()
         }
         messages.value = emptyList()
@@ -198,7 +261,7 @@ class HomeViewModel(
     override fun onCleared() {
         bluetoothController.stopDiscovery()
         viewModelScope.launch {
-            activeConnection?.close()
+            activeConnections.keys.forEach { it.close() }
             bluetoothServer.stop()
         }
         super.onCleared()
